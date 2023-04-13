@@ -60,7 +60,7 @@ int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, i
         rand_dev(), rand_dev(), rand_dev(), rand_dev(), rand_dev()
     };
     std::mt19937_64 rand_engine(sequence);
-    std::normal_distribution<T> distribution(0.0, 1.0);
+    std::normal_distribution<double> distribution(0.0, 1.0);
 
     // Calculate nnz
     // First (b - 1) / 2 rows
@@ -106,8 +106,18 @@ int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, i
     (*indptr)[rows] = nnz;
 
     // Fill data
-    for (int i = 0; i < nnz; i++) {
-        (*data)[i] = distribution(rand_engine);
+    if (std::is_same<T, std::complex<float>>::value) {
+        for (int i = 0; i < nnz; i++) {
+            (*data)[i] = std::complex<float>(distribution(rand_engine), distribution(rand_engine));
+        }
+    } else if (std::is_same<T, std::complex<double>>::value) {
+        for (int i = 0; i < nnz; i++) {
+            (*data)[i] = std::complex<double>(distribution(rand_engine), distribution(rand_engine));
+        }
+    } else {
+        for (int i = 0; i < nnz; i++) {
+            (*data)[i] = distribution(rand_engine);
+        }
     }
 
     // for (int i = 0; i < rows + 1; i++) {
@@ -144,7 +154,7 @@ void cudaMemcpyHostToDevice_banded_matrix(int rows, int cols, int bands, T* data
 }
 
 template<class T>
-void cudaMemcpyDeviceToHost_banded_matrix(int rows, int cols, int nnz, T* d_data, int* d_indices, int* d_indptr, T* data, int* indices, int* indptr) {
+int cudaMemcpyDeviceToHost_banded_matrix(int rows, int cols, int nnz, T* d_data, int* d_indices, int* d_indptr, T* data, int* indices, int* indptr) {
     // // Assert bands is odd
     // assert(bands % 2 == 1);
 
@@ -158,9 +168,11 @@ void cudaMemcpyDeviceToHost_banded_matrix(int rows, int cols, int nnz, T* d_data
     // int64_t nnz = bands * bands - bands - (bands * bands - 1) / 4 + (rows - bands + 1) * bands;
 
     // Copy data
-    cudaMemcpy(data, d_data, nnz * sizeof(T), cudaMemcpyDeviceToHost);
-    cudaMemcpy(indices, d_indices, nnz * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(indptr, d_indptr, (rows + 1) * sizeof(int), cudaMemcpyDeviceToHost);
+    CHECK_CUDA( cudaMemcpy(data, d_data, nnz * sizeof(T), cudaMemcpyDeviceToHost)   )
+    CHECK_CUDA( cudaMemcpy(indices, d_indices, nnz * sizeof(int), cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMemcpy(indptr, d_indptr, (rows + 1) * sizeof(int), cudaMemcpyDeviceToHost)  )
+
+    return EXIT_SUCCESS;
 }
 
 template<class T>

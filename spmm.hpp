@@ -1,10 +1,12 @@
 #include "utilities.hpp"
 
 template<class T>
-int banded_mm(char transa, char transb, int m, int n, int k, int64_t a_nnz, int64_t b_nnz, int64_t &c_nnz,
+int banded_mm(char transa, char transb, int m, int n, int k, int64_t a_nnz, int64_t b_nnz, int64_t& c_nnz,
               T* a_data, int* a_indices, int* a_indptr,
               T* b_data, int* b_indices, int* b_indptr,
-              T** c_data, int** c_indices, int** c_indptr) {
+              T** c_data_buf, int** c_indices_buf, int** c_indptr_buf,
+              int64_t& nnz_bufsz, int& rowsp1_bufsz,
+              size_t& bufsz1, void** buf1, size_t& bufsz2, void** buf2) {
     T alpha = (T) 1.0;
     T beta = (T) 0.0;
     cusparseOperation_t opA = transa == 'T' ? CUSPARSE_OPERATION_TRANSPOSE : CUSPARSE_OPERATION_NON_TRANSPOSE;
@@ -26,11 +28,9 @@ int banded_mm(char transa, char transb, int m, int n, int k, int64_t a_nnz, int6
     // CUSPARSE APIs
     cusparseHandle_t     handle = NULL;
     cusparseSpMatDescr_t matA, matB, matC;
-    void*  dBuffer1    = NULL, *dBuffer2   = NULL;
+    // void*  dBuffer1    = NULL, *dBuffer2   = NULL;
     size_t bufferSize1 = 0,    bufferSize2 = 0;
-    printf("Creating cusparse handle ...\n");
     CHECK_CUSPARSE( cusparseCreate(&handle) )
-    printf("Created cusparse handle ...\n");
     // Create sparse matrix A in CSR format
     CHECK_CUSPARSE( cusparseCreateCsr(&matA, m, k, a_nnz,
                                       a_indptr, a_indices, a_data,
@@ -55,14 +55,22 @@ int banded_mm(char transa, char transb, int m, int n, int k, int64_t a_nnz, int6
                                       &alpha, matA, matB, &beta, matC,
                                       computeType, CUSPARSE_SPGEMM_DEFAULT,
                                       spgemmDesc, &bufferSize1, NULL) )
-    CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
+    printf("bufferSize1 = %zu\n", bufferSize1);
+    if (bufsz1 < bufferSize1) {
+        if (bufsz1 > 0) {
+            CHECK_CUDA( cudaFree(*buf1) )
+        }
+        CHECK_CUDA( cudaMalloc((void**) buf1, bufferSize1) )
+    }
+
+    // CHECK_CUDA( cudaMalloc((void**) &dBuffer1, bufferSize1) )
     // inspect the matrices A and B to understand the memory requirement for
     // the next step
     CHECK_CUSPARSE(
         cusparseSpGEMM_workEstimation(handle, opA, opB,
                                       &alpha, matA, matB, &beta, matC,
                                       computeType, CUSPARSE_SPGEMM_DEFAULT,
-                                      spgemmDesc, &bufferSize1, dBuffer1) )
+                                      spgemmDesc, &bufferSize1, *buf1) )
 
     // ask bufferSize2 bytes for external memory
     CHECK_CUSPARSE(
@@ -70,29 +78,58 @@ int banded_mm(char transa, char transb, int m, int n, int k, int64_t a_nnz, int6
                                &alpha, matA, matB, &beta, matC,
                                computeType, CUSPARSE_SPGEMM_DEFAULT,
                                spgemmDesc, &bufferSize2, NULL) )
-    CHECK_CUDA( cudaMalloc((void**) &dBuffer2, bufferSize2) )
-
+    printf("bufferSize2 = %zu\n", bufferSize2);
+    // size_t myBufferSize2 = (a_nnz + b_nnz) * sizeof(T) * 30;
+    // size_t myBufferSize2 = m * n * sizeof(T);
+    size_t myBufferSize2 = 0;
+    if (bufferSize2 > 1e6) {
+        myBufferSize2 = bufferSize2 / 8;
+    } else {
+        myBufferSize2 = bufferSize2;
+    }
+    printf("myBufferSize2 = %zu\n", myBufferSize2);
+    if (bufsz2 < myBufferSize2) {
+        if (bufsz2 > 0) {
+            CHECK_CUDA( cudaFree(*buf2) )
+        }
+        CHECK_CUDA( cudaMalloc((void**) buf2, myBufferSize2) )
+    }
+    // CHECK_CUDA( cudaMalloc((void**) &dBuffer2, myBufferSize2) )
     // compute the intermediate product of A * B
     CHECK_CUSPARSE( cusparseSpGEMM_compute(handle, opA, opB,
                                            &alpha, matA, matB, &beta, matC,
                                            computeType, CUSPARSE_SPGEMM_DEFAULT,
-                                           spgemmDesc, &bufferSize2, dBuffer2) )
+                                           spgemmDesc, &myBufferSize2, *buf2) )
     // get matrix C non-zero entries C_nnz1
     int64_t C_num_rows1, C_num_cols1, C_nnz1;
     CHECK_CUSPARSE( cusparseSpMatGetSize(matC, &C_num_rows1, &C_num_cols1,
-                                         &C_nnz1) )
-    c_nnz = C_nnz1;                                  
+                                         &C_nnz1) )                               
     // allocate matrix C
-    CHECK_CUDA( cudaMalloc((void**) c_indptr, (C_num_rows1 + 1) * sizeof(int))  )
-    CHECK_CUDA( cudaMalloc((void**) c_indices, C_nnz1 * sizeof(int))   )
-    CHECK_CUDA( cudaMalloc((void**) c_data,  C_nnz1 * sizeof(T)) )
+    c_nnz = C_nnz1;
+
+    if (rowsp1_bufsz < C_num_rows1 + 1) {
+        if (rowsp1_bufsz > 0) {
+            CHECK_CUDA( cudaFree(*c_indptr_buf) )
+        }
+        CHECK_CUDA( cudaMalloc((void**) c_indptr_buf, (C_num_rows1 + 1) * sizeof(int)) )
+        rowsp1_bufsz = C_num_rows1 + 1;
+    }
+    if (nnz_bufsz < C_nnz1) {
+        if (nnz_bufsz > 0) {
+            CHECK_CUDA( cudaFree(*c_indices_buf) )
+            CHECK_CUDA( cudaFree(*c_data_buf) )
+        }
+        CHECK_CUDA( cudaMalloc((void**) c_indices_buf, C_nnz1 * sizeof(int)) )
+        CHECK_CUDA( cudaMalloc((void**) c_data_buf, C_nnz1 * sizeof(T)) )
+        nnz_bufsz = C_nnz1;
+    }
 
     // NOTE: if 'beta' != 0, the values of C must be update after the allocation
     //       of dC_values, and before the call of cusparseSpGEMM_copy
 
     // update matC with the new pointers
     CHECK_CUSPARSE(
-        cusparseCsrSetPointers(matC, *c_indptr, *c_indices, *c_data) )
+        cusparseCsrSetPointers(matC, *c_indptr_buf, *c_indices_buf, *c_data_buf) )
 
     // if beta != 0, cusparseSpGEMM_copy reuses/updates the values of dC_values
 
