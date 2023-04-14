@@ -1,6 +1,7 @@
 #include <cassert>
 #include <complex>
 #include <cuda_runtime_api.h> 
+#include "cublas_v2.h"
 #include <cusparse.h>
 #include <random>
 #include <stdio.h>
@@ -26,8 +27,18 @@
     }                                                                          \
 }
 
+#define CHECK_CUBLAS(func)                                                     \
+{                                                                              \
+    cublasStatus_t status = (func);                                            \
+    if (status != CUBLAS_STATUS_SUCCESS) {                                     \
+        printf("CUBLAS API failed at line %d with error: (%d)\n",           \
+               __LINE__, status);               \
+        return EXIT_FAILURE;                                                   \
+    }                                                                          \
+}
+
 template<class T>
-T* generate_random_dense_matrix(int rows, int cols) {
+void generate_random_dense_matrix(int rows, int cols, T **matrix) {
     // Generate RNG
     std::random_device rand_dev;
     std::seed_seq sequence{
@@ -35,17 +46,25 @@ T* generate_random_dense_matrix(int rows, int cols) {
         rand_dev(), rand_dev(), rand_dev(), rand_dev(), rand_dev()
     };
     std::mt19937_64 rand_engine(sequence);
-    std::normal_distribution<T> distribution(0.0, 1.0);
+    std::normal_distribution<double> distribution(0.0, 1.0);
 
     // Allocate memory
-    T* matrix = new T[rows * cols];
+    *matrix = new T[rows * cols];
 
-    // Fill matrix
-    for (int i = 0; i < rows * cols; i++) {
-        matrix[i] = distribution(rand_engine);
+    // Fill data
+    if (std::is_same<T, std::complex<float>>::value) {
+        for (int i = 0; i < rows * cols; i++) {
+            (*matrix)[i] = std::complex<float>(distribution(rand_engine), distribution(rand_engine));
+        }
+    } else if (std::is_same<T, std::complex<double>>::value) {
+        for (int i = 0; i < rows * cols; i++) {
+            (*matrix)[i] = std::complex<double>(distribution(rand_engine), distribution(rand_engine));
+        }
+    } else {
+        for (int i = 0; i < rows * cols; i++) {
+            (*matrix)[i] = distribution(rand_engine);
+        }
     }
-
-    return matrix;
 }
 
 template<class T>
@@ -219,4 +238,31 @@ int csr_to_dense(int rows, int cols, int nnz, T* data, int* indices, int* indptr
     CHECK_CUSPARSE( cusparseDestroySpMat(matA) )
     CHECK_CUSPARSE( cusparseDestroyDnMat(matB) )
     CHECK_CUSPARSE( cusparseDestroy(handle) )
+
+    return EXIT_SUCCESS;
+}
+
+template<class T>
+int matmul(char transa, char transb, int m, int n, int k, T *a, T *b, T *c) {
+
+    // T alpha = (T) 1.0;
+    // T beta = (T) 0.0;
+    cuDoubleComplex alpha = make_cuDoubleComplex(1.0, 0.0);
+    cuDoubleComplex beta = make_cuDoubleComplex(0.0, 0.0);
+    cublasOperation_t opA = (transa == 'N' || transa == 'n') ? CUBLAS_OP_N : CUBLAS_OP_T;
+    cublasOperation_t opB = (transb == 'N' || transb == 'n') ? CUBLAS_OP_N : CUBLAS_OP_T;
+    int lda = (opA == CUBLAS_OP_N) ? m : k;
+    int ldb = (opB == CUBLAS_OP_N) ? k : n;
+    int ldc = m;
+
+    cublasHandle_t handle;
+    CHECK_CUBLAS( cublasCreate(&handle) )
+
+    CHECK_CUBLAS(   cublasZgemm(handle, opA, opB, m, n, k,
+                                &alpha, (cuDoubleComplex*)a, lda, (cuDoubleComplex*)b, ldb,
+                                &beta, (cuDoubleComplex*)c, ldc)   )
+    
+    CHECK_CUBLAS( cublasDestroy(handle) )
+
+    return EXIT_SUCCESS;
 }
