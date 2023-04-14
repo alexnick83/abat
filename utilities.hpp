@@ -38,7 +38,7 @@
 }
 
 template<class T>
-void generate_random_dense_matrix(int rows, int cols, T **matrix) {
+void generate_random_dense_matrix(int rows, int cols, T **matrix, bool random = false) {
     // Generate RNG
     std::random_device rand_dev;
     std::seed_seq sequence{
@@ -52,7 +52,11 @@ void generate_random_dense_matrix(int rows, int cols, T **matrix) {
     *matrix = new T[rows * cols];
 
     // Fill data
-    if (std::is_same<T, std::complex<float>>::value) {
+    if (random) {
+        for (int i = 0; i < rows * cols; i++) {
+            (*matrix)[i] = i + 1;
+        }
+    } else if (std::is_same<T, std::complex<float>>::value) {
         for (int i = 0; i < rows * cols; i++) {
             (*matrix)[i] = std::complex<float>(distribution(rand_engine), distribution(rand_engine));
         }
@@ -68,7 +72,7 @@ void generate_random_dense_matrix(int rows, int cols, T **matrix) {
 }
 
 template<class T>
-int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, int** indices, int** indptr) {
+int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, int** indices, int** indptr, bool random = false) {
     // Assert bands is odd
     assert(bands % 2 == 1);
 
@@ -125,7 +129,11 @@ int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, i
     (*indptr)[rows] = nnz;
 
     // Fill data
-    if (std::is_same<T, std::complex<float>>::value) {
+    if (random) {
+        for (int i = 0; i < nnz; i++) {
+            (*data)[i] = i + 1;
+        }
+    } else if (std::is_same<T, std::complex<float>>::value) {
         for (int i = 0; i < nnz; i++) {
             (*data)[i] = std::complex<float>(distribution(rand_engine), distribution(rand_engine));
         }
@@ -257,6 +265,7 @@ int matmul(char transa, char transb, int m, int n, int k, T *a, T *b, T *c) {
 
     cublasHandle_t handle;
     CHECK_CUBLAS( cublasCreate(&handle) )
+    CHECK_CUBLAS( cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_HOST) )
 
     CHECK_CUBLAS(   cublasZgemm(handle, opA, opB, m, n, k,
                                 &alpha, (cuDoubleComplex*)a, lda, (cuDoubleComplex*)b, ldb,

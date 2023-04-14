@@ -12,8 +12,8 @@ int main(void) {
     // int rows = 12000;
     // int cols = 12000;
     // int bands = 555;
-    int rows = 8;
-    int cols = 8;
+    int rows = 2;
+    int cols = 2;
     int bands = 3;
 
     // // Generate random banded matrices
@@ -26,33 +26,92 @@ int main(void) {
     int32_t *a_indices, *a_indptr, *dev_a_indices, *dev_a_indptr;
     size_t work_sz;
     void *work;
-    int64_t a_nnz = generate_random_banded_matrix<dtype>(rows, cols, bands, &a_data, &a_indices, &a_indptr);
+    int64_t a_nnz = generate_random_banded_matrix<dtype>(rows, cols, bands, &a_data, &a_indices, &a_indptr, true);
     cudaMemcpyHostToDevice_banded_matrix<dtype>(rows, cols, bands, a_data, a_indices, a_indptr, &dev_a_data, &dev_a_indices, &dev_a_indptr);
-    generate_random_dense_matrix<dtype>(rows, cols, &b);
-    for (int i = 0; i < 10; i++) {
-        std::cout << b[i] << std::endl;
-    }
+    generate_random_dense_matrix<dtype>(rows, cols, &b, true);
     CHECK_CUDA( cudaMalloc((void**)&dev_b, rows * cols * sizeof(dtype)) )
     CHECK_CUDA( cudaMemcpy(dev_b, b, rows * cols * sizeof(dtype), cudaMemcpyHostToDevice) )
     int64_t n = rows;
     CHECK_CUDA( cudaMalloc((void**)&buffer, rows * cols * sizeof(dtype)) )
     abat<dtype>(n, a_nnz, dev_a_data, dev_a_indices, dev_a_indptr, dev_b, buffer, work_sz, &work);
     host_buffer = new dtype[rows * cols];
+    dtype *dev_b2;
     CHECK_CUDA( cudaMemcpy(host_buffer, buffer, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+    std::cout << "B:" << std::endl;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << b[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    std::cout << "AB:" << std::endl;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << host_buffer[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    std::cout << "ABAT:" << std::endl;
+    CHECK_CUDA( cudaMemcpy(host_buffer, dev_b, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << host_buffer[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    CHECK_CUDA( cudaMemcpy(host_buffer, dev_b, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+    CHECK_CUDA( cudaMalloc((void**)&dev_b2, rows * cols * sizeof(dtype)) )
+    CHECK_CUDA( cudaMemcpy(dev_b2, b, rows * cols * sizeof(dtype), cudaMemcpyHostToDevice) )
 
     // Validation
-    dtype *dev_a_dense;
+    dtype *dev_a_dense, *a_dense;
     CHECK_CUDA( cudaMalloc((void**)&dev_a_dense, rows * cols * sizeof(dtype)) )
     csr_to_dense<dtype>(rows, cols, a_nnz, dev_a_data, dev_a_indices, dev_a_indptr, dev_a_dense);
     std::cout << "Created dense A" << std::endl;
+    a_dense = new dtype[rows * cols];
+    CHECK_CUDA( cudaMemcpy(a_dense, dev_a_dense, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << a_dense[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    std::cout << "B:" << std::endl;
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << b[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
     dtype *dev_ab_dense;
+    dtype *host_buffer2 = new dtype[rows * cols];
     CHECK_CUDA( cudaMalloc((void**)&dev_ab_dense, rows * cols * sizeof(dtype)) )
-    matmul<dtype>('T', 'T', rows, cols, cols, dev_a_dense, dev_b, dev_ab_dense);
+    matmul<dtype>('N', 'N', rows, cols, cols, dev_b2, dev_a_dense, dev_ab_dense);
     std::cout << "Computed dense AB" << std::endl;
+    CHECK_CUDA( cudaMemcpy(host_buffer2, dev_ab_dense, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << host_buffer2[i + j * rows];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
     matmul<dtype>('N', 'N', rows, cols, cols, dev_a_dense, dev_ab_dense, buffer);
     std::cout << "Computed dense ABAT" << std::endl;
-    dtype *host_buffer2 = new dtype[rows * cols];
     CHECK_CUDA( cudaMemcpy(host_buffer2, buffer, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            std::cout << host_buffer2[i * rows + j];
+        }
+        std::cout << std::endl;
+    }
+    std::cout << std::endl;
 
     // Print matrices
     for (int i = 0; i < 10; i++) {

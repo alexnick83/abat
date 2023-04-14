@@ -30,14 +30,14 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
                                       a_indptr, a_indices, a_data,
                                       CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
                                       CUSPARSE_INDEX_BASE_ZERO, compute_type) )
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, n, n, n, B, compute_type, CUSPARSE_ORDER_ROW) )
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matAB, n, n, n, buffer, compute_type, CUSPARSE_ORDER_ROW) )
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, n, n, n, B, compute_type, CUSPARSE_ORDER_COL) )
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matAB, n, n, n, buffer, compute_type, CUSPARSE_ORDER_COL) )
 
     // Allocate an external buffer if needed
     size_t bufferSize = 0;
     CHECK_CUSPARSE( cusparseSpMM_bufferSize(
                                  handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
@@ -52,7 +52,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
 
     // Execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, *work_buf) )
@@ -61,14 +61,14 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
     CHECK_CUSPARSE( cusparseDestroyDnMat(matAB) )
 
     // A_csr x AB^T_dense = C^T_dense but in column-major format
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, n, n, n, buffer, compute_type, CUSPARSE_ORDER_ROW) )
-    CHECK_CUSPARSE( cusparseCreateDnMat(&matAB, n, n, n, B, compute_type, CUSPARSE_ORDER_COL) )
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matB, n, n, n, buffer, compute_type, CUSPARSE_ORDER_COL) )
+    CHECK_CUSPARSE( cusparseCreateDnMat(&matAB, n, n, n, B, compute_type, CUSPARSE_ORDER_ROW) )
 
     // Allocate an external buffer if needed
     bufferSize = 0;
     CHECK_CUSPARSE( cusparseSpMM_bufferSize(
                                  handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_TRANSPOSE,
                                  CUSPARSE_OPERATION_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
@@ -83,7 +83,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
 
     // Execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
+                                 CUSPARSE_OPERATION_TRANSPOSE,
                                  CUSPARSE_OPERATION_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, *work_buf) )
