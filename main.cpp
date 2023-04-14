@@ -75,7 +75,7 @@ int main(void) {
     CHECK_CUDA( cudaMemcpy(a_dense, dev_a_dense, rows * cols * sizeof(dtype), cudaMemcpyDeviceToHost) )
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
-            std::cout << a_dense[i + j * rows];
+            std::cout << a_dense[i * rows + j];
         }
         std::cout << std::endl;
     }

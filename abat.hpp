@@ -37,7 +37,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
     size_t bufferSize = 0;
     CHECK_CUSPARSE( cusparseSpMM_bufferSize(
                                  handle,
-                                 CUSPARSE_OPERATION_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
@@ -52,7 +52,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
 
     // Execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, *work_buf) )
@@ -68,7 +68,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
     bufferSize = 0;
     CHECK_CUSPARSE( cusparseSpMM_bufferSize(
                                  handle,
-                                 CUSPARSE_OPERATION_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, &bufferSize) )
@@ -83,7 +83,7 @@ int abat(int64_t n, int64_t a_nnz, T *a_data, int32_t *a_indices, int32_t *a_ind
 
     // Execute SpMM
     CHECK_CUSPARSE( cusparseSpMM(handle,
-                                 CUSPARSE_OPERATION_TRANSPOSE,
+                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                  CUSPARSE_OPERATION_TRANSPOSE,
                                  &alpha, matA, matB, &beta, matAB, compute_type,
                                  CUSPARSE_SPMM_ALG_DEFAULT, *work_buf) )

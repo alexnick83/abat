@@ -131,7 +131,7 @@ int64_t generate_random_banded_matrix(int rows, int cols, int bands, T** data, i
     // Fill data
     if (random) {
         for (int i = 0; i < nnz; i++) {
-            (*data)[i] = i + 1;
+            (*data)[i] = i;
         }
     } else if (std::is_same<T, std::complex<float>>::value) {
         for (int i = 0; i < nnz; i++) {
